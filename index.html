@@ -458,6 +458,22 @@ dialog{border-radius:24px;border:1px solid var(--cb)}
   .fs-top{gap:6px}
   .fs-top b{font-size:13px}
 }
+#pg-find{display:block;overflow-y:auto}
+#pg-find .main{display:flex;flex-direction:column;gap:18px;flex:none;min-height:0}
+.fd-form{display:grid;grid-template-columns:minmax(220px,3fr) minmax(130px,1fr) minmax(90px,.7fr) minmax(90px,.7fr) auto;gap:14px;align-items:end}
+.fd-f label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px}
+.fd-f input,.fd-f select{width:100%}
+.fd-sum{font-size:13px;color:var(--muted)}
+.fd-sum b{color:var(--text)}
+.fd-sec h3{display:flex;align-items:center;gap:10px;margin:0 0 10px;font-size:16px;font-weight:800}
+.fd-tab{background:var(--surface);border-radius:22px;box-shadow:var(--sh);border:1px solid var(--cb);overflow:auto}
+.fd-tab .ct td small{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+.fd-warn{display:block;color:#b54708;font-size:12px;margin-top:3px}
+.stb.s-absen{background:var(--surface2);border:1px solid var(--line2)}
+@media (max-width:700px){
+  .fd-form{grid-template-columns:1fr 1fr}
+  .fd-q,#fd-go{grid-column:1/-1}
+}
 </style>
 </head>
 <body>
@@ -470,6 +486,7 @@ dialog{border-radius:24px;border:1px solid var(--cb)}
   <button class="rb" id="t-over" title="Overview bulanan"><i data-ic="cal"></i><span>Overview</span></button>
   <button class="rb" id="t-abs" title="Absensi teknisi"><i data-ic="clip"></i><span>Absensi</span></button>
   <button class="rb" id="t-mon" title="Monitoring service"><i data-ic="chart"></i><span>Monitoring</span></button>
+  <button class="rb" id="t-find" title="Nearest Technician Finder"><i data-ic="pin"></i><span>Finder</span></button>
   <span class="sp"></span>
   <button class="rb" id="b-theme" title="Ganti mode tampilan"><i data-ic="moon"></i><span id="th-l">Dark</span></button>
   <button class="rb" id="b-data" title="Cadangan & data"><i data-ic="db"></i><span>Data</span></button>
@@ -491,6 +508,22 @@ dialog{border-radius:24px;border:1px solid var(--cb)}
     <div><h3 class="sec-t">Akses Cepat</h3><div class="qa" id="h-qa"></div></div>
     <section class="stat" id="h-stat"></section>
   </div>
+</main>
+
+<main class="page" id="pg-find" hidden>
+  <section class="main">
+    <div class="card2">
+      <div class="fd-form">
+        <div class="fd-f fd-q"><label for="fd-q">Lokasi service baru</label><input type="text" id="fd-q" placeholder="Dramaga, Bogor atau link Google Maps" autocomplete="off"></div>
+        <div class="fd-f"><label for="fd-d">Tanggal</label><input type="date" id="fd-d"></div>
+        <div class="fd-f"><label for="fd-h">Jam mulai</label><select id="fd-h"></select></div>
+        <div class="fd-f"><label for="fd-du">Durasi</label><select id="fd-du"></select></div>
+        <button id="fd-go" class="pri">Cari teknisi terdekat</button>
+      </div>
+      <div class="row" style="margin-top:14px"><label class="rd"><input type="checkbox" id="fd-tr"> Perhitungkan lalu lintas (tanggal mendatang)</label><span class="muted" id="fd-st"></span></div>
+    </div>
+    <div id="fd-res"></div>
+  </section>
 </main>
 
 <main class="page" id="pg-tech" hidden>
@@ -703,6 +736,7 @@ dialog{border-radius:24px;border:1px solid var(--cb)}
   <div class="db">
     <div class="f"><label>Client</label><input type="text" id="e-name"></div>
     <div class="f"><label>Nama Company</label><input type="text" id="e-co"></div>
+    <div class="f" style="align-items:start"><label>Alamat / link Maps</label><div><input type="text" id="e-addr" style="width:100%" autocomplete="off"><div class="row" style="margin-top:8px"><button id="e-geo" class="sm" type="button">Cek lokasi</button><span class="muted" id="e-geot"></span></div></div></div>
     <div class="f"><label>Working Hour</label><div class="two"><select id="e-s"></select><span>–</span><select id="e-e"></select></div></div>
     <div class="f"><label>Teknisi 1</label><select id="e-t1"></select></div>
     <div class="f"><label>Teknisi 2</label><select id="e-t2"></select></div>
@@ -1160,6 +1194,8 @@ function openClient(id){
   $("e-name").value=c.name;$("e-co").value=c.company||"";$("e-s").value=c.s;$("e-e").value=c.e;
   $("e-t1").value=c.techs[0]||"";$("e-t2").value=c.techs[1]||"";
   buildSg(c.service);$("e-note").value=c.note||"";
+  $("e-addr").value=c.address||"";eGeo=null;
+  $("e-geot").textContent=(c.address&&hasGeo(c))?`Koordinat tersimpan (${(+c.lat).toFixed(4)}, ${(+c.lng).toFixed(4)})`:"";
   $("de").showModal();
 }
 $("c-add").onclick=()=>openClient();
@@ -1171,6 +1207,13 @@ $("e-save").onclick=()=>{
   if(e<=s)return toast("Jam selesai harus setelah jam mulai.");
   const svc=readSg();
   const f={name,company:$("e-co").value.trim(),s,e,techs:[...new Set([$("e-t1").value,$("e-t2").value].filter(Boolean))],service:svc,note:$("e-note").value.trim()};
+  {const addr=$("e-addr").value.trim(),prevAddr=(editC&&editC.address)||"";
+   if(addr||prevAddr){
+     f.address=addr;
+     if(addr===prevAddr&&editC&&hasGeo(editC)){/* alamat sama: koordinat tersimpan dipertahankan */}
+     else if(eGeo&&eGeo.addr===addr){f.lat=eGeo.lat;f.lng=eGeo.lng}
+     else{f.lat=null;f.lng=null}
+   }}
   if(editC)Object.assign(editC,f);else{editC={id:uid(),...f};S.clients.push(editC)}
   if(cfil)cfil.add(editC.id);
   save();$("de").close();renderClients();toast("Data klien disimpan");
@@ -1967,11 +2010,12 @@ const IC={
  flag:'<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><path d="M4 22v-7"/>',
  db:'<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/>',
- moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'
+ moon:'<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+ pin:'<path d="M20 10c0 6-8 12-8 12S4 16 4 10a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>'
 };
 const ico=(k,sz=20)=>`<svg width="${sz}" height="${sz}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${IC[k]}</svg>`;
 document.querySelectorAll("[data-ic]").forEach(e=>{e.innerHTML=ico(e.dataset.ic,22)});
-const TITLES={home:"Beranda",tech:"Jadwal Teknisi",client:"Data Klien",over:"Overview",abs:"Absensi Teknisi",mon:"Monitoring Service"};
+const TITLES={home:"Beranda",tech:"Jadwal Teknisi",client:"Data Klien",over:"Overview",abs:"Absensi Teknisi",mon:"Monitoring Service",find:"Nearest Technician Finder"};
 const mqDark=window.matchMedia?matchMedia("(prefers-color-scheme: dark)"):{matches:false};
 const isDark=()=>{const t=document.documentElement.getAttribute("data-theme");return t?t==="dark":mqDark.matches};
 function setThemeUi(){const d=isDark();$("tb-theme").innerHTML=ico(d?"sun":"moon",20);$("tb-data").innerHTML=ico("db",20);$("b-theme").querySelector("[data-ic]").innerHTML=ico(d?"sun":"moon",22);$("th-l").textContent=d?"Bright":"Dark"}
@@ -2093,18 +2137,165 @@ $("os-copy").onclick=()=>copyText(schedText(orng.from,orng.to,false));
 $("osum-b").addEventListener("click",e=>{const b=e.target.closest("[data-cd]");if(b)copyText(schedText(b.dataset.cd,b.dataset.cd,true))});
 [1,2,3].forEach(i=>{$("os-r"+i).onclick=()=>$("o-r"+i).click()});
 
+/* ---------- Nearest Technician Finder ---------- */
+let eGeo=null,fdBusy=false;
+$("fd-h").innerHTML=Array.from({length:24},(_,h)=>`<option value="${h}">${hh(h)}</option>`).join("");
+$("fd-du").innerHTML=Array.from({length:12},(_,i)=>`<option value="${i+1}">${i+1} jam</option>`).join("");
+$("fd-h").value=9;$("fd-du").value=2;
+function hasGeo(c){return !!c&&c.lat!=null&&c.lng!=null&&isFinite(c.lat)&&isFinite(c.lng)}
+const cname=c=>c.company||c.name;
+const kmTxt=m=>m==null?"—":(m/1000).toFixed(1)+" km";
+const minTxt=s=>{if(s==null)return "—";const m=Math.max(1,Math.round(s/60));return m>=60?Math.floor(m/60)+" j "+(m%60)+" mnt":m+" mnt"};
+const addrShort=c=>{const a=c.address||"";return /^https?:\/\//i.test(a)?"Titik dari link Google Maps":a};
+async function mapsApi(path,body){
+  const h={"Content-Type":"application/json","x-app-key":APIKEY,"x-user":encodeURIComponent(APIUSER)};
+  const r=await fetch(path,{method:"POST",headers:h,body:JSON.stringify(body)});
+  let j={};try{j=await r.json()}catch(e){}
+  if(r.status===401){const e=new Error("Kata sandi salah");e.code=401;throw e}
+  if(!r.ok)throw new Error(j.error||("HTTP "+r.status));
+  return j;
+}
+$("e-geo").onclick=async()=>{
+  const a=$("e-addr").value.trim();if(!a)return toast("Isi alamat dulu.");
+  if(!REMOTE){$("e-geot").textContent="Pengecekan lokasi hanya tersedia di versi Vercel.";return}
+  $("e-geot").textContent="Memeriksa…";
+  try{const g=await mapsApi("/api/geocode",{q:a});eGeo={addr:a,lat:g.lat,lng:g.lng};$("e-geot").textContent=`✓ ${g.formatted} (${g.lat.toFixed(4)}, ${g.lng.toFixed(4)})`}
+  catch(e){eGeo=null;$("e-geot").textContent=(e&&e.message)||"Gagal memeriksa lokasi";if(e&&e.code===401)askLogin()}
+};
+function renderFind(){
+  if(!$("fd-d").value)$("fd-d").value=today;
+  $("fd-go").disabled=!REMOTE||fdBusy;
+  if(!REMOTE)$("fd-st").textContent="Hanya aktif di versi Vercel (butuh backend dan GOOGLE_MAPS_API_KEY).";
+}
+function techPlan(t,d,sH,eH,vsDay){
+  const att=attOf(t,d);
+  if(FULLABS.has(att.s))return{t,kind:"absent",att};
+  const mine=vsDay.filter(v=>v.t.includes(t.id)).sort((a,b)=>a.s-b.s||a.e-b.e);
+  const half=(att.s==="izin_am"&&sH<12)||(att.s==="izin_pm"&&eH>12);
+  const cur=mine.find(v=>v.s<eH&&sH<v.e)||null;
+  const prev=mine.filter(v=>v.e<=sH).sort((a,b)=>b.e-a.e)[0]||null;
+  const next=mine.filter(v=>v.s>=eH).sort((a,b)=>a.s-b.s)[0]||null;
+  if(!mine.length)return{t,kind:"unsch",next:null,half,att};
+  if(cur)return{t,kind:"busy",origin:cur,cur,next,half,att};
+  if(half)return prev?{t,kind:"busy",origin:prev,prev,next,half,att}:{t,kind:"unsch",next,half,att};
+  if(!prev)return{t,kind:"unsch",next,half,att};
+  return{t,kind:"free",origin:prev,prev,next,half,att};
+}
+async function runFinder(){
+  if(fdBusy)return;
+  const q=$("fd-q").value.trim(),d=$("fd-d").value,sH=+$("fd-h").value,dur=+$("fd-du").value,eH=sH+dur;
+  if(!q)return toast("Isi lokasi service baru dulu.");
+  if(!d)return toast("Pilih tanggal service.");
+  if(eH>24)return toast("Service melewati tengah malam. Kurangi durasi atau mulai lebih awal.");
+  if(!S.techs.length)return toast("Belum ada teknisi.");
+  const traffic=$("fd-tr").checked,st=t=>{$("fd-st").textContent=t};
+  const at=h=>new Date(`${d}T${pad(h)}:00:00`).toISOString();
+  fdBusy=true;$("fd-go").disabled=true;
+  try{
+    st("Mencari koordinat lokasi baru…");
+    const dest=await mapsApi("/api/geocode",{q});
+    const plans=S.techs.map(t=>techPlan(t,d,sH,eH,visitsIn(d,d)));
+    // koordinat client yang dibutuhkan (hanya sekali, lalu disimpan di data klien)
+    const need=new Map();
+    plans.forEach(p=>[p.origin,p.next].forEach(v=>{if(v){const c=cl(v.c);if(c&&!hasGeo(c)&&c.address)need.set(c.id,c)}}));
+    const list=[...need.values()],total=list.length,failed=new Map();let done=0;
+    const worker=async()=>{while(list.length){const c=list.shift();
+      try{const g=await mapsApi("/api/geocode",{q:c.address});c.lat=g.lat;c.lng=g.lng}
+      catch(e){if(e&&e.code===401)throw e;failed.set(c.id,(e&&e.message)||"Gagal")}
+      done++;st(`Menyimpan koordinat alamat client (sekali saja)… ${done}/${total}`)}};
+    await Promise.all([worker(),worker(),worker()]);
+    if(total)save();
+    const DEST={lat:dest.lat,lng:dest.lng};
+    // jarak rute jalan: lokasi teknisi -> lokasi baru
+    st("Menghitung jarak rute jalan…");
+    const oIds=[...new Set(plans.filter(p=>p.origin&&hasGeo(cl(p.origin.c))).map(p=>p.origin.c))],legs1={};
+    for(let i=0;i<oIds.length;i+=100){
+      const ch=oIds.slice(i,i+100),r=await mapsApi("/api/matrix",{origins:ch.map(id=>({lat:cl(id).lat,lng:cl(id).lng})),destinations:[DEST],traffic,departureTime:at(sH)});
+      r.elements.forEach(el=>{legs1[ch[el.o]]=el});
+    }
+    // waktu: lokasi baru -> client berikutnya
+    const nIds=[...new Set(plans.filter(p=>p.next&&hasGeo(cl(p.next.c))).map(p=>p.next.c))],legs2={};
+    for(let i=0;i<nIds.length;i+=25){
+      const ch=nIds.slice(i,i+25),r=await mapsApi("/api/matrix",{origins:[DEST],destinations:ch.map(id=>({lat:cl(id).lat,lng:cl(id).lng})),traffic,departureTime:at(eH)});
+      r.elements.forEach(el=>{legs2[ch[el.d]]=el});
+    }
+    // susun hasil
+    const R={best:[],busy:[],unsch:[],absent:[],missing:[]};
+    plans.forEach(p=>{
+      if(p.kind==="absent"){R.absent.push(p);return}
+      const nc=p.next?cl(p.next.c):null;
+      let l2=p.next?legs2[p.next.c]:null,slack=null,nextWarn="";
+      if(p.next){
+        if(l2&&l2.ok){slack=p.next.s*60-(eH*60+Math.round(l2.seconds/60))}
+        else nextWarn=nc&&!nc.address?"Alamat client berikutnya belum diisi, waktu perjalanan tidak bisa dicek":"Waktu perjalanan ke client berikutnya tidak bisa dihitung";
+      }
+      p.l2=l2;p.slack=slack;p.nextWarn=nextWarn;p.reasons=[];
+      if(p.kind==="unsch"){p.status=(slack!=null&&slack<0)?"Conflict":"Available";if(slack!=null&&slack<0)p.reasons.push(`Kurang ${-slack} mnt menuju ${cname(nc)} jam ${hh(p.next.s)}`);R.unsch.push(p);return}
+      const oc=cl(p.origin.c),l1=legs1[p.origin.c];
+      if(!oc.address||!hasGeo(oc)||!l1||!l1.ok){
+        p.why=!oc.address?"Alamat client belum diisi":failed.has(oc.id)?"Alamat tidak ditemukan: "+failed.get(oc.id):"Rute tidak ditemukan";
+        R.missing.push(p);return;
+      }
+      p.l1=l1;p.oc=oc;
+      if(p.kind==="busy"){
+        p.status="Busy";
+        p.reasons.push(p.cur?`Sedang service ${cname(oc)} ${hh(p.cur.s)}–${hh(p.cur.e)}`:"Izin setengah hari");
+        R.busy.push(p);return;
+      }
+      p.status="Available";
+      const arrive=p.prev.e*60+Math.round(l1.seconds/60);
+      if(arrive>sH*60){p.status="Conflict";p.reasons.push(`Tiba ${arrive-sH*60} mnt setelah jam mulai (selesai ${hh(p.prev.e)} + perjalanan ${minTxt(l1.seconds)})`)}
+      if(slack!=null&&slack<0){p.status="Conflict";p.reasons.push(`Kurang ${-slack} mnt menuju ${cname(nc)} jam ${hh(p.next.s)} (perjalanan ${minTxt(p.l2.seconds)})`)}
+      (p.status==="Available"?R.best:R.busy).push(p);
+    });
+    const byDist=(a,b)=>(a.l1.meters)-(b.l1.meters);
+    R.best.sort(byDist);R.busy.sort(byDist);
+    R.unsch.sort((a,b)=>a.t.name.localeCompare(b.t.name));
+    renderFindResult(R,dest,d,sH,eH);
+    st(`Selesai · ${R.best.length} kandidat terbaik`);
+  }catch(e){
+    if(e&&e.code===401){askLogin(()=>{$("boot").hidden=true;runFinder()})}
+    else{st("");$("fd-res").innerHTML=`<div class="card2" style="color:#d92d20">${esc((e&&e.message)||"Gagal mencari teknisi")}</div>`}
+  }
+  fdBusy=false;$("fd-go").disabled=!REMOTE;
+}
+function renderFindResult(R,dest,d,sH,eH){
+  const o=parse(d),badge=s=>`<span class="stb ${s==="Available"?"s-selesai":s==="Busy"?"s-terlewat":"s-nojadwal"}">${s}</span>`;
+  const nextCell=p=>{
+    if(!p.next)return `<span class="muted">Tidak ada</span>`;
+    const nc=cl(p.next.c);
+    return `${hh(p.next.s)}–${hh(p.next.e)} · ${esc(cname(nc))}<small>${p.slack!=null?(p.slack>=0?`perjalanan ${minTxt(p.l2.seconds)}, sisa ${p.slack} mnt`:`perjalanan ${minTxt(p.l2.seconds)}, kurang ${-p.slack} mnt`):""}</small>${p.nextWarn?`<span class="fd-warn">⚠ ${esc(p.nextWarn)}</span>`:""}`;
+  };
+  const row=(p,i)=>`<tr><td><b>${i+1}</b></td><td><b>${esc(p.t.name)}</b></td><td>${esc(cname(p.oc))}${p.kind==="busy"&&p.cur?" <small>(sedang service)</small>":""}</td><td>${esc(addrShort(p.oc))}</td><td class="nw">${kmTxt(p.l1.meters)}</td><td class="nw">${minTxt(p.l1.seconds)}</td><td>${nextCell(p)}</td><td>${badge(p.status)}${p.reasons.map(r=>`<span class="fd-warn">${esc(r)}</span>`).join("")}</td></tr>`;
+  const head=`<thead><tr><th>#</th><th>Teknisi</th><th>Client terakhir</th><th>Lokasi teknisi (dari jadwal)</th><th>Jarak</th><th>Perjalanan</th><th>Jadwal client berikutnya</th><th>Status</th></tr></thead>`;
+  const sec=(title,tone,n,body)=>`<section class="fd-sec"><h3>${title}<span class="pill t-${tone}">${n}</span></h3><div class="fd-tab">${body}</div></section>`;
+  const empty=t=>`<div class="empty" style="padding:28px">${t}</div>`;
+  let h=`<div class="fd-sum">Lokasi baru: <b>${esc(dest.formatted||"")}</b> (${dest.lat.toFixed(4)}, ${dest.lng.toFixed(4)}) · <b>${DOW[o.getDay()]}, ${lbl(d)}</b> · ${hh(sH)}–${hh(eH)}</div>`;
+  h+=sec("Best Candidates","grn",R.best.length,R.best.length?`<table class="ct">${head}<tbody>${R.best.map(row).join("")}</tbody></table>`:empty("Tidak ada teknisi yang tersedia dengan lokasi terakhir yang diketahui."));
+  h+=sec("Nearby but Busy","yel",R.busy.length,R.busy.length?`<table class="ct">${head}<tbody>${R.busy.map(row).join("")}</tbody></table>`:empty("Tidak ada."));
+  const urow=p=>`<tr><td><b>${esc(p.t.name)}</b></td><td>${p.next?`${hh(p.next.s)}–${hh(p.next.e)} · ${esc(cname(cl(p.next.c)))}<small>${p.slack!=null?(p.slack>=0?`perjalanan ${minTxt(p.l2.seconds)}, sisa ${p.slack} mnt`:`perjalanan ${minTxt(p.l2.seconds)}, kurang ${-p.slack} mnt`):""}</small>${p.nextWarn?`<span class="fd-warn">⚠ ${esc(p.nextWarn)}</span>`:""}`:`<span class="muted">Belum ada jadwal pada tanggal ini</span>`}${p.half?`<span class="fd-warn">Izin setengah hari</span>`:""}</td><td class="muted">Lokasi awal tidak diketahui</td><td>${badge(p.status)}${p.reasons.map(r=>`<span class="fd-warn">${esc(r)}</span>`).join("")}</td></tr>`;
+  h+=sec("Unscheduled Technicians","blu",R.unsch.length,R.unsch.length?`<table class="ct"><thead><tr><th>Teknisi</th><th>Jadwal berikutnya</th><th>Lokasi</th><th>Status</th></tr></thead><tbody>${R.unsch.map(urow).join("")}</tbody></table>`:empty("Tidak ada."));
+  if(R.missing.length)h+=sec("Alamat client belum lengkap","pnk",R.missing.length,`<table class="ct"><thead><tr><th>Teknisi</th><th>Client terakhir</th><th>Masalah</th><th></th></tr></thead><tbody>${R.missing.map(p=>`<tr><td><b>${esc(p.t.name)}</b></td><td>${esc(cname(cl(p.origin.c)))}</td><td>${esc(p.why)}</td><td class="act"><button class="sm" data-fixc="${p.origin.c}">Isi alamat</button></td></tr>`).join("")}</tbody></table>`);
+  if(R.absent.length)h+=sec("Tidak masuk (tidak dihitung)","pnk",R.absent.length,`<div style="padding:16px 20px">${R.absent.map(p=>`<span class="chip">${esc(p.t.name)} · ${esc(attLabel(p.att))}</span>`).join("")}</div>`);
+  $("fd-res").innerHTML=h;
+}
+$("fd-go").onclick=runFinder;
+$("fd-q").addEventListener("keydown",e=>{if(e.key==="Enter")runFinder()});
+$("fd-res").addEventListener("click",e=>{const b=e.target.closest("[data-fixc]");if(b)openClient(b.dataset.fixc)});
+
 function show(p){
   curPage=p;
   $("ptitle").textContent=TITLES[p]||"";{const o=new Date();$("psub").textContent=DN[o.getDay()]+", "+o.getDate()+" "+MONF[o.getMonth()]+" "+o.getFullYear()}
-  [["home","t-home","pg-home"],["tech","t-tech","pg-tech"],["client","t-client","pg-client"],["over","t-over","pg-over"],["abs","t-abs","pg-abs"],["mon","t-mon","pg-mon"]].forEach(([k,b,g])=>{$(b).classList.toggle("on",p===k);$(g).hidden=p!==k});
+  [["home","t-home","pg-home"],["tech","t-tech","pg-tech"],["client","t-client","pg-client"],["over","t-over","pg-over"],["abs","t-abs","pg-abs"],["mon","t-mon","pg-mon"],["find","t-find","pg-find"]].forEach(([k,b,g])=>{$(b).classList.toggle("on",p===k);$(g).hidden=p!==k});
   if(p==="home")renderHome();
   else if(p==="tech"){$("from").value=ui.from;$("to").value=ui.to;renderFilter();renderBoard()}
   else if(p==="client")renderClients();
   else if(p==="abs")renderAbs();
   else if(p==="mon")renderMon();
+  else if(p==="find")renderFind();
   else renderOverview();
 }
-$("t-home").onclick=()=>show("home");$("t-tech").onclick=()=>show("tech");$("t-client").onclick=()=>show("client");$("t-over").onclick=()=>show("over");$("t-abs").onclick=()=>show("abs");$("t-mon").onclick=()=>show("mon");
+$("t-home").onclick=()=>show("home");$("t-tech").onclick=()=>show("tech");$("t-client").onclick=()=>show("client");$("t-over").onclick=()=>show("over");$("t-abs").onclick=()=>show("abs");$("t-mon").onclick=()=>show("mon");$("t-find").onclick=()=>show("find");
 document.addEventListener("pointerdown",e=>{
   const b=e.target.closest("button");if(!b||b.disabled)return;
   const r=b.getBoundingClientRect(),d=Math.max(r.width,r.height)*2,el=document.createElement("span");
